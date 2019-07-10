@@ -14,7 +14,7 @@
                 <mt-button size="small" type="default">商家服务</mt-button>
                 <mt-button size="small" type="default">方案</mt-button>
             </div>
-            <hr>
+            <hr />
             <div :key="searchResult.id" @click="handleResultSelect(searchResult)" v-for="searchResult in searchResults">
                 <mt-cell :title="searchResult.name">
                     <img :src="getSearchResultIcon(searchResult.type)" height="24" slot="icon" width="24" />
@@ -27,10 +27,23 @@
             </div>
             <div class="describe-text">
                 <div class="describe-title">
-                    <h4>{{resultInfo.name}}<mt-badge size="small">{{distance}}</mt-badge></h4>
-                    <a id="route_btn" @click="handleRouteBtnClick"><img src="../assets/route2.png"></a>
+                    <h4>
+                        {{resultInfo.name}}
+                        <mt-badge size="small">{{distance}}</mt-badge>
+                    </h4>
+                    <a @click="handleRouteBtnClick" id="route_btn">
+                        <img src="../assets/route2.png" />
+                    </a>
                 </div>
                 <p>{{resultInfo.description}}</p>
+            </div>
+        </mt-popup>
+        <mt-popup :modal="false" class="route-popup" position="bottom" v-model="routePopupVisible">
+            <h4>{{routeDescriptionString}}</h4>
+            <hr>
+            <div class="route-buttons">
+                <mt-button size="small" type="default" @click="handleCancelNavigation">取消导航</mt-button>
+                <mt-button size="small" type="primary" @click="handleStartNavigation">开始导航</mt-button>
             </div>
         </mt-popup>
     </div>
@@ -42,6 +55,10 @@ import 'font-awesome/css/font-awesome.css';
 import * as L from 'leaflet';
 import 'leaflet.locatecontrol';
 import 'leaflet.chinatmsproviders';
+import { Indicator } from 'mint-ui';
+import { Toast } from 'mint-ui';
+import { parseParams,createTimeString,createDistanceString } from '../utils/utils';
+import axios from 'axios';
 
 export default {
     name: 'Map',
@@ -50,6 +67,7 @@ export default {
             map: null,
             searchPopupVisible: false,
             infoPopupVisible: false,
+            routePopupVisible:false,
             isSearching: false,
             currentLocation: null,
             trailLayers: [
@@ -78,7 +96,11 @@ export default {
                 geometryid: '1',
                 geometry: { type: 'Point', coordinates: [114.3402356, 30.5311278] },
                 imageurl: require('../assets/福泉寺.jpg')
-            }
+            },
+            searchLayer: null,
+            routeUrl: 'http://www.myshuju.me:8989',
+            route: null,
+            routeLayer: null
         };
     },
     mounted() {
@@ -116,6 +138,22 @@ export default {
                 .addTo(this.map);
             locationControl.start();
             L.control.zoom({ position: 'bottomleft' }).addTo(this.map);
+            //加载业务图层
+            let icon = L.icon({
+                iconUrl: require('../assets/marker-icon-red.png'),
+                iconAnchor: [0, 41]
+            });
+            this.searchLayer = L.geoJson(null, {
+                pointToLayer: function(feature, latlng) {
+                    let mark = L.marker(latlng, { icon: icon });
+                    mark.feature = feature;
+                    return mark;
+                },
+                style: function(feature) {
+                    return { color: '#00FEFE' };
+                }
+            }).addTo(this.map);
+            this.routeLayer = L.geoJson().addTo(this.map);
         },
         //添加步道
         addTrailLayers() {
@@ -135,6 +173,7 @@ export default {
             let _this = this;
             this.map.on('click', function(event) {
                 _this.infoPopupVisible = false;
+                _this.searchLayer.clearLayers();
             });
             this.map.on('locationfound ', function(event) {
                 _this.currentLocation = event.latlng;
@@ -144,6 +183,7 @@ export default {
         handleSearchFocus() {
             this.isSearching = true;
             this.searchPopupVisible = true;
+            this.searchLayer.clearLayers();
             //TODO:监测input的输入事件，进行搜索
         },
         //处理选择的搜索结果
@@ -152,6 +192,9 @@ export default {
             this.searchPopupVisible = false;
             this.infoPopupVisible = true;
             //TODO:从接口获取实际的数据，以及获取数据之后根据geometryid获取地理数据
+            this.searchLayer.addData(this.resultInfo.geometry);
+            this.map.panTo(L.latLng(this.resultInfo.geometry.coordinates[1], this.resultInfo.geometry.coordinates[0]));
+            //TODO:移动到地图需要完善其他几何类型
         },
         //获取搜索结果的图标
         getSearchResultIcon(type) {
@@ -169,20 +212,109 @@ export default {
             }
         },
         //请求线路数据
-        handleRouteBtnClick(){
+        handleRouteBtnClick() {
+            this.searchLayer.clearLayers();
+            Indicator.open();
+            this.infoPopupVisible = false;
+            var toIcon = L.icon({
+                iconUrl: require('../assets/marker-small-red.png')
+            });
+            let toPoint = L.latLng(this.resultInfo.geometry.coordinates[1], this.resultInfo.geometry.coordinates[0]);
+            L.marker(toPoint, { icon: toIcon }).addTo(this.routeLayer);
 
-        }
+            let pointStr =
+                'point=' +
+                encodeURIComponent(this.currentLocation.lat + ',' + this.currentLocation.lng) +
+                '&point=' +
+                encodeURIComponent(toPoint.lat + ',' + toPoint.lng);
+            let options = {
+                type: 'json',
+                locale: 'zh-CN',
+                vehicle: 'foot',
+                weighting: 'fastest',
+                elevation: false,
+                points_encoded: false
+            };
+            let url = this.routeUrl + '/route?' + pointStr + '&' + parseParams(options);
+            axios
+                .get(url)
+                .then(res => {
+                    Indicator.close();
+                    if (res.status == 200) {
+                        let data = res.data;
+                        if (data.message) {
+                            console.log(data.message);
+                            return;
+                        }
+                        this.route = data;
+                        let defaultRouteStyle = { color: '#00cc33', weight: 8, opacity: 0.6 };
+                        let highlightRouteStyle = { color: '#00cc33', weight: 10, opacity: 0.8 };
+                        let alternativeRouteStye = { color: 'darkgray', weight: 8, opacity: 0.8 };
+                        for (let pathIndex = 0; pathIndex < data.paths.length; pathIndex++) {
+                            let path = data.paths[pathIndex];
+                            let geojsonFeature = {
+                                type: 'Feature',
+                                geometry: path.points,
+                                properties: {
+                                    style: style,
+                                    name: 'route',
+                                    snapped_waypoints: path.snapped_waypoints
+                                }
+                            };
+                            let style = pathIndex === 0 ? defaultRouteStyle : alternativeRouteStye;
+                            this.routeLayer.addData(geojsonFeature);
+                        }
+
+                        let firstPath = data.paths[0];
+                        if (firstPath.bbox) {
+                            let minLon = firstPath.bbox[0];
+                            let minLat = firstPath.bbox[1];
+                            let maxLon = firstPath.bbox[2];
+                            let maxLat = firstPath.bbox[3];
+                            let tmpB = new L.LatLngBounds(new L.LatLng(minLat, minLon), new L.LatLng(maxLat, maxLon));
+                            this.map.fitBounds(tmpB);
+                        }
+                        this.routePopupVisible = true;
+                    }
+                    console.log(res);
+                })
+                .catch(e => {
+                    Indicator.close();
+                    Toast(e);
+                });
+        },
+        //取消导航
+        handleCancelNavigation(){
+            this.routeLayer.clearLayers();
+            this.routePopupVisible = false;
+        },
+        //开始导航
+        handleStartNavigation(){},
     },
     computed: {
         distance() {
             if (this.currentLocation == null || this.resultInfo.geometry == null) {
                 return '计算中';
             }
-            let dx = Math.abs((this.currentLocation.lng - this.resultInfo.geometry.coordinates[0])) * 110;
-            let dy = Math.abs((this.currentLocation.lat - this.resultInfo.geometry.coordinates[1])) * 110;
+            let dx = Math.abs(this.currentLocation.lng - this.resultInfo.geometry.coordinates[0]) * 110;
+            let dy = Math.abs(this.currentLocation.lat - this.resultInfo.geometry.coordinates[1]) * 110;
             let d = Math.sqrt(dx * dx + dy * dy) / 2;
             return d.toFixed(2) + 'km';
             //TODO:此处只计算了点类型地理要素，没有计算线类型的地理要素，另110KM只是估算，精确计算需要投影到平面坐标系
+        },
+        routeDescriptionString()
+        {
+            if (this.route == null) {
+                return '计算中';
+            }
+            if(this.route.paths.length == 0)
+            {
+                return '计算中';
+            }
+            let path = this.route.paths[0];
+            let distanceStr = createDistanceString(path.distance);
+            let timeStr = createTimeString(path.time);
+            return distanceStr + '的路线，需要时间' + timeStr;
         }
     }
 };
@@ -256,18 +388,19 @@ export default {
     text-align: left;
 }
 
-.search-popup hr{
-    color: #ccc
+.search-popup hr,.route-popup hr {
+    color: #ccc;
+    opacity: 0.5;
 }
 
-.quick-search{
-    margin:10px auto;
-    text-align: center
+.quick-search {
+    margin: 10px auto;
+    text-align: center;
 }
 
-.quick-search .mint-button{
+.quick-search .mint-button {
     margin-right: 10px;
-    border-radius:0;
+    border-radius: 0;
     background-color: #fcfcfc;
 }
 
@@ -307,7 +440,7 @@ export default {
     text-align: left;
 }
 
-.describe-text h4{
+.describe-text h4,.route-popup h4 {
     margin: 10px 0;
 }
 
@@ -316,23 +449,37 @@ export default {
     margin: 4px 0;
     text-overflow: ellipsis;
     overflow: hidden;
-    display:-webkit-box; 
-    -webkit-box-orient:vertical;
-    -webkit-line-clamp:3; 
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
 }
 
-.describe-title{
+.describe-title {
     align-items: center;
     display: flex;
 }
 
-#route_btn{
+#route_btn {
     margin-left: auto;
     margin-right: 16px;
 }
 
-#route_btn img{
+#route_btn img {
     width: 28px;
     height: 28px;
 }
+
+.route-popup{
+    width: 100%;
+    height: 15vh;
+}
+
+.route-buttons{
+    text-align: right;
+}
+
+.route-buttons .mint-button{
+    margin-right: 20px;
+}
+
 </style>
