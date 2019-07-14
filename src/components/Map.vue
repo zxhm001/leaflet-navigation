@@ -40,10 +40,10 @@
         </mt-popup>
         <mt-popup :modal="false" class="route-popup" position="bottom" v-model="routePopupVisible">
             <h4>{{routeDescriptionString}}</h4>
-            <hr>
+            <hr />
             <div class="route-buttons">
-                <mt-button size="small" type="default" @click="handleCancelNavigation">取消导航</mt-button>
-                <mt-button size="small" type="primary" @click="handleStartNavigation">开始导航</mt-button>
+                <mt-button @click="handleCancelNavigation" size="small" type="default">取消导航</mt-button>
+                <mt-button @click="handleStartNavigation" size="small" type="primary">开始导航</mt-button>
             </div>
         </mt-popup>
     </div>
@@ -57,7 +57,7 @@ import 'leaflet.locatecontrol';
 import 'leaflet.chinatmsproviders';
 import { Indicator } from 'mint-ui';
 import { Toast } from 'mint-ui';
-import { parseParams,createTimeString,createDistanceString } from '../utils/utils';
+import { parseParams, createTimeString, createDistanceString } from '../utils/utils';
 import axios from 'axios';
 
 export default {
@@ -67,7 +67,7 @@ export default {
             map: null,
             searchPopupVisible: false,
             infoPopupVisible: false,
-            routePopupVisible:false,
+            routePopupVisible: false,
             isSearching: false,
             currentLocation: null,
             trailLayers: [
@@ -78,14 +78,14 @@ export default {
             ],
             searchResults: [
                 { id: 0, type: '线路', name: '逐步环线' },
-                { id: 0, type: '景点', name: '福泉寺' },
-                { id: 0, type: '方案', name: '妙相寺到许家山' },
-                { id: 0, type: '商服', name: '七天连锁酒店' },
-                { id: 0, type: '线路', name: '龙宫生态沟环线' },
-                { id: 0, type: '景点', name: '竹林' },
-                { id: 0, type: '方案', name: '上金到马岙' },
-                { id: 0, type: '商服', name: '逐步环线' },
-                { id: 0, type: '商服', name: '走一走户外用品' }
+                { id: 1, type: '景点', name: '福泉寺' },
+                { id: 2, type: '方案', name: '妙相寺到许家山' },
+                { id: 3, type: '商服', name: '七天连锁酒店' },
+                { id: 4, type: '线路', name: '龙宫生态沟环线' },
+                { id: 5, type: '景点', name: '竹林' },
+                { id: 6, type: '方案', name: '上金到马岙' },
+                { id: 7, type: '商服', name: '逐步环线' },
+                { id: 8, type: '商服', name: '走一走户外用品' }
             ],
             resultInfo: {
                 id: 0,
@@ -98,9 +98,9 @@ export default {
                 imageurl: require('../assets/福泉寺.jpg')
             },
             searchLayer: null,
-            routeUrl: 'http://www.myshuju.me:8989',
             route: null,
-            routeLayer: null
+            routeLayer: null,
+            locationEventObject: null
         };
     },
     mounted() {
@@ -124,7 +124,6 @@ export default {
                 zoomControl: false,
                 attributionControl: false
             });
-            this.map.addLayer(vec_layer);
             let baseLayers = {
                 电子地图: vec_layer,
                 影像地图: img_layer
@@ -175,9 +174,12 @@ export default {
                 _this.infoPopupVisible = false;
                 _this.searchLayer.clearLayers();
             });
-            this.map.on('locationfound ', function(event) {
-                _this.currentLocation = event.latlng;
-            });
+            this.locationEventObject = {
+                locationfound: function(event) {
+                    _this.currentLocation = event.latlng;
+                }
+            };
+            this.map.on(this.locationEventObject);
         },
         //处理开始搜索时的效果
         handleSearchFocus() {
@@ -220,6 +222,7 @@ export default {
                 iconUrl: require('../assets/marker-small-red.png')
             });
             let toPoint = L.latLng(this.resultInfo.geometry.coordinates[1], this.resultInfo.geometry.coordinates[0]);
+            this.$store.commit('setToPoint', toPoint);
             L.marker(toPoint, { icon: toIcon }).addTo(this.routeLayer);
 
             let pointStr =
@@ -235,7 +238,7 @@ export default {
                 elevation: false,
                 points_encoded: false
             };
-            let url = this.routeUrl + '/route?' + pointStr + '&' + parseParams(options);
+            let url = this.$store.getters.getRouteUrl + '/route?' + pointStr + '&' + parseParams(options);
             axios
                 .get(url)
                 .then(res => {
@@ -243,29 +246,23 @@ export default {
                     if (res.status == 200) {
                         let data = res.data;
                         if (data.message) {
-                            console.log(data.message);
                             return;
                         }
                         this.route = data;
+                        this.$store.commit('setRoute', data);
                         let defaultRouteStyle = { color: '#00cc33', weight: 8, opacity: 0.6 };
-                        let highlightRouteStyle = { color: '#00cc33', weight: 10, opacity: 0.8 };
-                        let alternativeRouteStye = { color: 'darkgray', weight: 8, opacity: 0.8 };
-                        for (let pathIndex = 0; pathIndex < data.paths.length; pathIndex++) {
-                            let path = data.paths[pathIndex];
-                            let geojsonFeature = {
-                                type: 'Feature',
-                                geometry: path.points,
-                                properties: {
-                                    style: style,
-                                    name: 'route',
-                                    snapped_waypoints: path.snapped_waypoints
-                                }
-                            };
-                            let style = pathIndex === 0 ? defaultRouteStyle : alternativeRouteStye;
-                            this.routeLayer.addData(geojsonFeature);
-                        }
-
                         let firstPath = data.paths[0];
+                        let geojsonFeature = {
+                            type: 'Feature',
+                            geometry: firstPath.points,
+                            properties: {
+                                style: defaultRouteStyle,
+                                name: 'route',
+                                snapped_waypoints: firstPath.snapped_waypoints
+                            }
+                        };
+                        this.routeLayer.addData(geojsonFeature);
+
                         if (firstPath.bbox) {
                             let minLon = firstPath.bbox[0];
                             let minLat = firstPath.bbox[1];
@@ -276,7 +273,6 @@ export default {
                         }
                         this.routePopupVisible = true;
                     }
-                    console.log(res);
                 })
                 .catch(e => {
                     Indicator.close();
@@ -284,12 +280,14 @@ export default {
                 });
         },
         //取消导航
-        handleCancelNavigation(){
+        handleCancelNavigation() {
             this.routeLayer.clearLayers();
             this.routePopupVisible = false;
         },
         //开始导航
-        handleStartNavigation(){},
+        handleStartNavigation() {
+            this.$router.push('/nav');
+        }
     },
     computed: {
         distance() {
@@ -302,13 +300,11 @@ export default {
             return d.toFixed(2) + 'km';
             //TODO:此处只计算了点类型地理要素，没有计算线类型的地理要素，另110KM只是估算，精确计算需要投影到平面坐标系
         },
-        routeDescriptionString()
-        {
+        routeDescriptionString() {
             if (this.route == null) {
                 return '计算中';
             }
-            if(this.route.paths.length == 0)
-            {
+            if (this.route.paths.length == 0) {
                 return '计算中';
             }
             let path = this.route.paths[0];
@@ -316,6 +312,9 @@ export default {
             let timeStr = createTimeString(path.time);
             return distanceStr + '的路线，需要时间' + timeStr;
         }
+    },
+    beforeDestroy() {
+        this.map.off(this.locationEventObject);
     }
 };
 </script>
@@ -388,7 +387,8 @@ export default {
     text-align: left;
 }
 
-.search-popup hr,.route-popup hr {
+.search-popup hr,
+.route-popup hr {
     color: #ccc;
     opacity: 0.5;
 }
@@ -440,7 +440,8 @@ export default {
     text-align: left;
 }
 
-.describe-text h4,.route-popup h4 {
+.describe-text h4,
+.route-popup h4 {
     margin: 10px 0;
 }
 
@@ -469,17 +470,16 @@ export default {
     height: 28px;
 }
 
-.route-popup{
+.route-popup {
     width: 100%;
     height: 15vh;
 }
 
-.route-buttons{
+.route-buttons {
     text-align: right;
 }
 
-.route-buttons .mint-button{
+.route-buttons .mint-button {
     margin-right: 20px;
 }
-
 </style>
