@@ -57,6 +57,7 @@ import 'leaflet.locatecontrol';
 import 'leaflet.chinatmsproviders';
 import { Indicator } from 'mint-ui';
 import { Toast } from 'mint-ui';
+import * as turf from "@turf/turf"
 import { parseParams, createTimeString, createDistanceString } from '../utils/utils';
 import axios from 'axios';
 
@@ -249,7 +250,7 @@ export default {
                             return;
                         }
                         this.route = data;
-                        this.$store.commit('setRoute', data);
+                        this.$store.commit('setRoute', data.paths[0]);
                         let defaultRouteStyle = { color: '#00cc33', weight: 8, opacity: 0.6 };
                         let firstPath = data.paths[0];
                         let geojsonFeature = {
@@ -294,11 +295,12 @@ export default {
             if (this.currentLocation == null || this.resultInfo.geometry == null) {
                 return '计算中';
             }
-            let dx = Math.abs(this.currentLocation.lng - this.resultInfo.geometry.coordinates[0]) * 110;
-            let dy = Math.abs(this.currentLocation.lat - this.resultInfo.geometry.coordinates[1]) * 110;
-            let d = Math.sqrt(dx * dx + dy * dy) / 2;
-            return d.toFixed(2) + 'km';
-            //TODO:此处只计算了点类型地理要素，没有计算线类型的地理要素，另110KM只是估算，精确计算需要投影到平面坐标系
+            let from = turf.point([this.currentLocation.lng, this.currentLocation.lat]);
+            let to = turf.point([this.resultInfo.geometry.coordinates[0], this.resultInfo.geometry.coordinates[1]]);
+            let options = {units: 'meters'};
+            let d = turf.distance(from,to,options);
+            return createDistanceString(d);
+            //TODO:此处只计算了点类型地理要素，没有计算线类型的地理要素
         },
         routeDescriptionString() {
             if (this.route == null) {
