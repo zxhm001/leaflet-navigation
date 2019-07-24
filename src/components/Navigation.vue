@@ -26,6 +26,8 @@ import 'leaflet-rotatedmarker';
 import '../plugins/RotateDraggable';
 import * as turf from '@turf/turf';
 import { parseParams, createTimeString, createDistanceString, Projetction } from '../utils/utils';
+import {NavigationProcess} from '../navigation/process'
+// import {userSnappedToRoutePosition} from '../utils/navigation'
 import axios from 'axios';
 export default {
     name: 'Navigation',
@@ -36,20 +38,21 @@ export default {
             map: null,
             _rotate: 0,
             deviceorientation: 0,
+            currentLocation: null,
             route: null,
             instructionIndex: 0,
             routeLayer: null,
             locationLayer: null,
             remainingRoute: null,
             locationEventObject: null,
-            deviceorientationEventHandle: null
+            deviceorientationEventHandle: null,
+            process:null,
         };
     },
     mounted() {
         this.initMap();
         this.initRoute();
-        this.setLocationEvent();
-        this.setDeviceorientationEvent();
+        this.startNavigation();
     },
     methods: {
         initMap() {
@@ -83,6 +86,11 @@ export default {
             this.locationLayer = L.layerGroup([]);
             this.map.addLayer(this.locationLayer);
         },
+        startNavigation(){
+            this.setLocationEvent();
+            this.setDeviceorientationEvent();
+            this.process = NavigationProcess.init(this.route);
+        },
         handleExitNavigation() {
             this.$router.push('/');
         },
@@ -90,22 +98,14 @@ export default {
             let _this = this;
             this.locationEventObject = {
                 locationfound: function(event) {
-                    _this.locationLayer.clearLayers();
-                    let navgationIcon = L.icon({
-                        iconUrl: require('../assets/navigation.png'),
-                        iconSize: [32, 32]
-                    });
-                    L.marker(event.latlng,{
-                        icon:navgationIcon,
-                        rotationAngle:_this.deviceorientation,
-                        rotationOrigin:'center'
-                        }).addTo(_this.locationLayer);
+                    _this.currentLocation = event.latlng;
+                    _this.refreshLocationMarker();
                 }
             };
             this.map.on(this.locationEventObject);
             this.map.locate({
-                watch:true,
-                setView:true,
+                watch: true,
+                setView: true
             });
         },
         setDeviceorientationEvent() {
@@ -118,12 +118,29 @@ export default {
                     // Android
                     _this.deviceorientation = 360 - e.alpha;
                 }
+                _this.refreshLocationMarker();
             };
             if ('ondeviceorientationabsolute' in window) {
                 window.addEventListener('ondeviceorientationabsolute', this.deviceorientationEventHandle);
             } else if ('ondeviceorientation' in window) {
                 window.addEventListener('ondeviceorientation', this.deviceorientationEventHandle);
             }
+        },
+        refreshLocationMarker() {
+            this.locationLayer.clearLayers();
+            let navgationIcon = L.icon({
+                iconUrl: require('../assets/navigation.png'),
+                iconSize: [32, 32]
+            });
+            if (this.process != null) {
+                
+            }
+            
+            L.marker(this.currentLocation, {
+                icon: navgationIcon,
+                rotationAngle: this.deviceorientation,
+                rotationOrigin: 'center'
+            }).addTo(this.locationLayer);
         }
     },
     computed: {
