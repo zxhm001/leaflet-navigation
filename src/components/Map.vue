@@ -130,7 +130,7 @@ export default {
                 影像地图: img_layer
             };
             L.control.layers(baseLayers, null, { position: 'bottomright' }).addTo(this.map);
-            var locationControl = L.control
+            let locationControl = L.control
                 .locate({
                     position: 'bottomleft',
                     showCompass: true
@@ -316,6 +316,7 @@ export default {
         }
     },
     beforeDestroy() {
+        this.map.stopLocate();
         this.map.off(this.locationEventObject);
     }
 };
