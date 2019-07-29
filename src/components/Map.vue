@@ -58,7 +58,8 @@ import 'leaflet.chinatmsproviders';
 import { Indicator } from 'mint-ui';
 import { Toast } from 'mint-ui';
 import * as turf from "@turf/turf"
-import { parseParams, createTimeString, createDistanceString } from '../utils/utils';
+import { parseParams } from '../utils/utils';
+import {createTimeString,createDistanceString} from '../navigation/helper'
 import axios from 'axios';
 
 export default {
@@ -133,7 +134,8 @@ export default {
             let locationControl = L.control
                 .locate({
                     position: 'bottomleft',
-                    showCompass: true
+                    showCompass: true,
+                    enableHighAccuracy:true
                 })
                 .addTo(this.map);
             locationControl.start();
