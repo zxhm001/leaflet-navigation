@@ -4,8 +4,8 @@
         <mt-popup :modal="false" class="info-popup" position="top" v-model="infoPopupVisible">
             <img :src="instructionImage" class="info-img" />
             <div class="info-texts">
-                <h4>{{navigationInfo1}}</h4>
-                <h4>{{navigationInfo2}}</h4>
+                <h4>{{navigationInfo[0]}}</h4>
+                <h4>{{navigationInfo[1]}}</h4>
             </div>
         </mt-popup>
         <mt-popup :modal="false" class="option-popup" position="bottom" v-model="opionPopupVisible">
@@ -25,8 +25,9 @@ import 'leaflet.chinatmsproviders';
 import 'leaflet-rotatedmarker';
 import '../plugins/RotateDraggable';
 import * as turf from '@turf/turf';
-import { parseParams, createTimeString, createDistanceString, Projetction } from '../utils/utils';
+import { parseParams, Projetction } from '../utils/utils';
 import {NavigationProcess} from '../navigation/process'
+import {locationToRouteDistance,createTimeString,createDistanceString} from '../navigation/helper'
 // import {userSnappedToRoutePosition} from '../utils/navigation'
 import axios from 'axios';
 export default {
@@ -40,10 +41,8 @@ export default {
             deviceorientation: 0,
             currentLocation: null,
             route: null,
-            instructionIndex: 0,
             routeLayer: null,
             locationLayer: null,
-            remainingRoute: null,
             locationEventObject: null,
             deviceorientationEventHandle: null,
             process:null,
@@ -55,6 +54,7 @@ export default {
         this.startNavigation();
     },
     methods: {
+        //初始化地图
         initMap() {
             let vec_c_Layer = L.tileLayer.chinaProvider('TianDiTu.Normal.Map', { maxZoom: 18, minZoom: 0 });
             let cva_c_layer = L.tileLayer.chinaProvider('TianDiTu.Normal.Annotion', { maxZoom: 18, minZoom: 0 });
@@ -68,9 +68,9 @@ export default {
                 attributionControl: false
             });
         },
+        //初始化路径
         initRoute() {
             this.route = this.$store.getters.getRoute;
-            this.remainingRoute = this.route;
             this.routeLayer = L.geoJson().addTo(this.map);
             let defaultRouteStyle = { color: '#00cc33', weight: 8, opacity: 0.6 };
             let geojsonFeature = {
@@ -86,28 +86,36 @@ export default {
             this.locationLayer = L.layerGroup([]);
             this.map.addLayer(this.locationLayer);
         },
+        //开始导航
         startNavigation(){
             this.setLocationEvent();
             this.setDeviceorientationEvent();
             this.process = NavigationProcess.init(this.route);
         },
+        //处理退出导航按钮点击事件
         handleExitNavigation() {
             this.$router.push('/');
         },
+        //设置位置变化响应事件
         setLocationEvent() {
             let _this = this;
             this.locationEventObject = {
                 locationfound: function(event) {
                     _this.currentLocation = event.latlng;
+                    if (_this.process != null) {
+                        _this.process.update(event.latlng);
+                    }
                     _this.refreshLocationMarker();
                 }
             };
             this.map.on(this.locationEventObject);
             this.map.locate({
                 watch: true,
-                setView: true
+                setView: true,
+                enableHighAccuracy:true
             });
         },
+        //设置角度变化响应事件
         setDeviceorientationEvent() {
             let _this = this;
             this.deviceorientationEventHandle = function(e) {
@@ -126,17 +134,27 @@ export default {
                 window.addEventListener('ondeviceorientation', this.deviceorientationEventHandle);
             }
         },
+        //位置或角度变化时刷新位置图标
         refreshLocationMarker() {
             this.locationLayer.clearLayers();
             let navgationIcon = L.icon({
                 iconUrl: require('../assets/navigation.png'),
                 iconSize: [32, 32]
             });
-            if (this.process != null) {
-                
+            let point = this.currentLocation;
+            let points = this.process.instructionPoints();
+            let routDistance = locationToRouteDistance(this.currentLocation,points);
+            if (routDistance > 50) {
+                let latlngs = [
+                    [point.lat, point.lng],
+                    [points[0][1], points[0][0]],
+                ];
+                let polyline = L.polyline(latlngs, {color: 'grey'}).addTo(this.locationLayer);
             }
-            
-            L.marker(this.currentLocation, {
+            else{
+                point = this.process.currentPoint();
+            }
+            L.marker(point, {
                 icon: navgationIcon,
                 rotationAngle: this.deviceorientation,
                 rotationOrigin: 'center'
@@ -154,9 +172,11 @@ export default {
             }
         },
         remaining() {
-            if (this.remainingRoute != null) {
-                let distanceStr = createDistanceString(this.remainingRoute.distance);
-                let timeStr = createTimeString(this.remainingRoute.time);
+            if (this.process != null) {
+                let distance = this.process.distanceRemaining();
+                let time = this.route.time * distance /this.route.distance;
+                let distanceStr = createDistanceString(distance);
+                let timeStr = createTimeString(time);
                 return distanceStr + '，约' + timeStr;
             }
             return '';
@@ -164,7 +184,7 @@ export default {
         instructionImage() {
             let imageName = 'marker-icon-green';
             if (this.route != null) {
-                switch (this.route.instructions[this.instructionIndex].sign) {
+                switch (this.route.instructions[this.process.index()].sign) {
                     case -98:
                         imageName = 'u_turn';
                         break;
@@ -225,12 +245,12 @@ export default {
             }
             return require('../assets/' + imageName + '.png');
         },
-        navigationInfo1() {
-            return '沿珞珈山路';
+        navigationInfo() {
+            if (this.process != null) {
+                return this.process.instructionStrings();
+            }
+            return ['',''];
         },
-        navigationInfo2() {
-            return '继续直行800米';
-        }
     },
     beforeDestroy() {
         this.rotate = 0;
