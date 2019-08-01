@@ -41,7 +41,7 @@ const NavigationProcess = {
             else
             {
                 strings[0] = "前方" + Helper.createDistanceString(distance);
-                strings[1] = this.this._instructions[this._instructionIndex].text;
+                strings[1] = this._instructions[this._instructionIndex].text;
             }
         }
         return strings;
