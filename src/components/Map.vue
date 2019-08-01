@@ -320,6 +320,11 @@ export default {
     beforeDestroy() {
         this.map.stopLocate();
         this.map.off(this.locationEventObject);
+        if ('ondeviceorientationabsolute' in window) {
+            window.removeEventListener('ondeviceorientationabsolute');
+        } else if ('ondeviceorientation' in window) {
+            window.removeEventListener('ondeviceorientation');
+        }
     }
 };
 </script>

@@ -26,8 +26,8 @@ import 'leaflet-rotatedmarker';
 import '../plugins/RotateDraggable';
 import * as turf from '@turf/turf';
 import { parseParams, Projetction } from '../utils/utils';
-import {NavigationProcess} from '../navigation/process'
-import {locationToRouteDistance,createTimeString,createDistanceString} from '../navigation/helper'
+import { NavigationProcess } from '../navigation/process';
+import { locationToRouteDistance, createTimeString, createDistanceString } from '../navigation/helper';
 // import {userSnappedToRoutePosition} from '../utils/navigation'
 import axios from 'axios';
 export default {
@@ -37,7 +37,10 @@ export default {
             infoPopupVisible: true,
             opionPopupVisible: true,
             map: null,
-            _rotate: 0,
+            p_rotate: 0,
+            p_remaining: '',
+            p_instructionImage: '',
+            p_navigationInfo: ['',''],
             deviceorientation: 0,
             currentLocation: null,
             route: null,
@@ -45,7 +48,7 @@ export default {
             locationLayer: null,
             locationEventObject: null,
             deviceorientationEventHandle: null,
-            process:null,
+            process: null
         };
     },
     mounted() {
@@ -87,7 +90,7 @@ export default {
             this.map.addLayer(this.locationLayer);
         },
         //开始导航
-        startNavigation(){
+        startNavigation() {
             this.setLocationEvent();
             this.setDeviceorientationEvent();
             this.process = NavigationProcess.init(this.route);
@@ -104,6 +107,9 @@ export default {
                     _this.currentLocation = event.latlng;
                     if (_this.process != null) {
                         _this.process.update(event.latlng);
+                        _this.remaining = '';
+                        _this.navigationInfo = ['',''];
+                        _this.instructionImage = '';
                     }
                     _this.refreshLocationMarker();
                 }
@@ -112,7 +118,7 @@ export default {
             this.map.locate({
                 watch: true,
                 setView: true,
-                enableHighAccuracy:true
+                enableHighAccuracy: true
             });
         },
         //设置角度变化响应事件
@@ -143,15 +149,11 @@ export default {
             });
             let point = this.currentLocation;
             let points = this.process.instructionPoints();
-            let routDistance = locationToRouteDistance(this.currentLocation,points);
+            let routDistance = locationToRouteDistance(this.currentLocation, points);
             if (routDistance > 50) {
-                let latlngs = [
-                    [point.lat, point.lng],
-                    [points[0][1], points[0][0]],
-                ];
-                let polyline = L.polyline(latlngs, {color: 'grey'}).addTo(this.locationLayer);
-            }
-            else{
+                let latlngs = [[point.lat, point.lng], [points[0][1], points[0][0]]];
+                let polyline = L.polyline(latlngs, { color: 'grey' }).addTo(this.locationLayer);
+            } else {
                 point = this.process.currentPoint();
             }
             L.marker(point, {
@@ -171,86 +173,99 @@ export default {
                 this._rotate = value;
             }
         },
-        remaining() {
-            if (this.process != null) {
-                let distance = this.process.distanceRemaining();
-                let time = this.route.time * distance /this.route.distance;
-                let distanceStr = createDistanceString(distance);
-                let timeStr = createTimeString(time);
-                return distanceStr + '，约' + timeStr;
-            }
-            return '';
-        },
-        instructionImage() {
-            let imageName = 'marker-icon-green';
-            if (this.route != null) {
-                switch (this.route.instructions[this.process.index()].sign) {
-                    case -98:
-                        imageName = 'u_turn';
-                        break;
-                    case -8:
-                        imageName = 'u_turn_left';
-                        break;
-                    case -7:
-                        imageName = 'keep_left';
-                        break;
-                    case -3:
-                        imageName = 'sharp_left';
-                        break;
-                    case -2:
-                        imageName = 'sharp_left';
-                        break;
-                    case -1:
-                        imageName = 'slight_left';
-                        break;
-                    case 0:
-                        imageName = 'continue';
-                        break;
-                    case 1:
-                        imageName = 'slight_right';
-                        break;
-                    case 2:
-                        imageName = 'right';
-                        break;
-                    case 3:
-                        imageName = 'sharp_right';
-                        break;
-                    case 4:
-                        imageName = 'marker-icon-red';
-                        break;
-                    case 5:
-                        imageName = 'marker-icon-blue';
-                        break;
-                    case 6:
-                        imageName = 'roundabout';
-                        break;
-                    case 7:
-                        imageName = 'keep_right';
-                        break;
-                    case 8:
-                        imageName = 'u_turn_right';
-                        break;
-                    case 101:
-                        imageName = 'pt_start_trip';
-                        break;
-                    case 102:
-                        imageName = 'pt_transfer_to';
-                        break;
-                    case 103:
-                        imageName = 'pt_end_trip';
-                        break;
-                    default:
-                        break;
+        remaining: {
+            get: function() {
+                return this.p_remaining;
+            },
+            set: function() {
+                if (this.process != null) {
+                    let distance = this.process.distanceRemaining();
+                    let time = (this.route.time * distance) / this.route.distance;
+                    let distanceStr = createDistanceString(distance);
+                    let timeStr = createTimeString(time);
+                    this.p_remaining = distanceStr + '，约' + timeStr;
                 }
             }
-            return require('../assets/' + imageName + '.png');
         },
-        navigationInfo() {
-            if (this.process != null) {
-                return this.process.instructionStrings();
+        instructionImage: {
+            get: function() {
+                return this.p_instructionImage;
+            },
+            set: function() {
+                let imageName = 'marker-icon-green';
+                if (this.route != null) {
+                    switch (this.route.instructions[this.process.index()].sign) {
+                        case -98:
+                            imageName = 'u_turn';
+                            break;
+                        case -8:
+                            imageName = 'u_turn_left';
+                            break;
+                        case -7:
+                            imageName = 'keep_left';
+                            break;
+                        case -3:
+                            imageName = 'sharp_left';
+                            break;
+                        case -2:
+                            imageName = 'sharp_left';
+                            break;
+                        case -1:
+                            imageName = 'slight_left';
+                            break;
+                        case 0:
+                            imageName = 'continue';
+                            break;
+                        case 1:
+                            imageName = 'slight_right';
+                            break;
+                        case 2:
+                            imageName = 'right';
+                            break;
+                        case 3:
+                            imageName = 'sharp_right';
+                            break;
+                        case 4:
+                            imageName = 'marker-icon-red';
+                            break;
+                        case 5:
+                            imageName = 'marker-icon-blue';
+                            break;
+                        case 6:
+                            imageName = 'roundabout';
+                            break;
+                        case 7:
+                            imageName = 'keep_right';
+                            break;
+                        case 8:
+                            imageName = 'u_turn_right';
+                            break;
+                        case 101:
+                            imageName = 'pt_start_trip';
+                            break;
+                        case 102:
+                            imageName = 'pt_transfer_to';
+                            break;
+                        case 103:
+                            imageName = 'pt_end_trip';
+                            break;
+                        default:
+                            break;
+                    }
+                }
+                this.p_instructionImage = require('../assets/' + imageName + '.png');
             }
-            return ['',''];
         },
+        navigationInfo: {
+            get: function() {
+                return this.p_navigationInfo;
+            },
+            set: function() {
+                if (this.process != null) {
+                    this.p_navigationInfo = this.process.instructionStrings();
+                }
+            }
+        }
     },
     beforeDestroy() {
         this.rotate = 0;
