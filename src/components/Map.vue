@@ -55,8 +55,7 @@ import 'font-awesome/css/font-awesome.css';
 import * as L from 'leaflet';
 import 'leaflet.locatecontrol';
 import 'leaflet.chinatmsproviders';
-import { Indicator } from 'mint-ui';
-import { Toast } from 'mint-ui';
+import { Indicator,Toast } from 'mint-ui';
 import * as turf from "@turf/turf"
 import { parseParams } from '../utils/utils';
 import {createTimeString,createDistanceString} from '../navigation/helper'
@@ -102,7 +101,8 @@ export default {
             searchLayer: null,
             route: null,
             routeLayer: null,
-            locationEventObject: null
+            locationEventObject: null,
+            locationControl:null
         };
     },
     mounted() {
@@ -131,14 +131,14 @@ export default {
                 影像地图: img_layer
             };
             L.control.layers(baseLayers, null, { position: 'bottomright' }).addTo(this.map);
-            let locationControl = L.control
+            this.locationControl = L.control
                 .locate({
                     position: 'bottomleft',
                     showCompass: true,
                     enableHighAccuracy:true
                 })
                 .addTo(this.map);
-            locationControl.start();
+            this.locationControl.start();
             L.control.zoom({ position: 'bottomleft' }).addTo(this.map);
             //加载业务图层
             let icon = L.icon({
@@ -318,13 +318,8 @@ export default {
         }
     },
     beforeDestroy() {
-        this.map.stopLocate();
+        this.locationControl.stop();
         this.map.off(this.locationEventObject);
-        if ('ondeviceorientationabsolute' in window) {
-            window.removeEventListener('ondeviceorientationabsolute');
-        } else if ('ondeviceorientation' in window) {
-            window.removeEventListener('ondeviceorientation');
-        }
     }
 };
 </script>
