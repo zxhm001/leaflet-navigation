@@ -63,4 +63,7 @@ L.Draggable.include({
 		this._lastEvent = e;
 		this._animRequest = L.Util.requestAnimFrame(this._updatePosition, this, true);
 	},
+	setRotate:function(rotate){
+		this._rotate = rotate;
+	},
 })

@@ -28,6 +28,7 @@ import * as turf from '@turf/turf';
 import { parseParams, Projetction } from '../utils/utils';
 import { NavigationProcess } from '../navigation/process';
 import { locationToRouteDistance, createTimeString, createDistanceString } from '../navigation/helper';
+import { Toast } from 'mint-ui';
 // import {userSnappedToRoutePosition} from '../utils/navigation'
 import axios from 'axios';
 export default {
@@ -40,7 +41,7 @@ export default {
             p_rotate: 0,
             p_remaining: '',
             p_instructionImage: '',
-            p_navigationInfo: ['',''],
+            p_navigationInfo: ['', ''],
             deviceorientation: 0,
             currentLocation: null,
             route: null,
@@ -91,9 +92,9 @@ export default {
         },
         //开始导航
         startNavigation() {
-            this.setLocationEvent();
-            this.setDeviceorientationEvent();
             this.process = NavigationProcess.init(this.route);
+            this.setLocationEvent();
+            this.setDeviceorientationEvent(); 
         },
         //处理退出导航按钮点击事件
         handleExitNavigation() {
@@ -108,8 +109,19 @@ export default {
                     if (_this.process != null) {
                         _this.process.update(event.latlng);
                         _this.remaining = '';
-                        _this.navigationInfo = ['',''];
+                        _this.navigationInfo = ['', ''];
                         _this.instructionImage = '';
+                        let tinyIndex = _this.process.tinyIndex();
+                        let start = turf.point(_this.process.instructionPoints()[tinyIndex]);
+                        let stop = turf.point(_this.process.instructionPoints()[tinyIndex+1]);
+                        _this.rotate = 360 - turf.bearing(start,stop,{final:true});
+                        if (_this.process.isComplete()) {
+                            _this.map.stopLocate();
+                            _this.map.off(_this.locationEventObject);
+                            setTimeout(function(){
+                                _this.$router.push('/');
+                            },5000);
+                        }
                     }
                     _this.refreshLocationMarker();
                 }
@@ -135,9 +147,9 @@ export default {
                 _this.refreshLocationMarker();
             };
             if ('ondeviceorientationabsolute' in window) {
-                window.addEventListener('ondeviceorientationabsolute', this.deviceorientationEventHandle);
+                L.DomEvent.on(window, 'deviceorientationabsolute', this.deviceorientationEventHandle, this);
             } else if ('ondeviceorientation' in window) {
-                window.addEventListener('ondeviceorientation', this.deviceorientationEventHandle);
+                L.DomEvent.on(window, 'deviceorientation', this.deviceorientationEventHandle, this);
             }
         },
         //位置或角度变化时刷新位置图标
@@ -148,13 +160,12 @@ export default {
                 iconSize: [32, 32]
             });
             let point = this.currentLocation;
-            let points = this.process.instructionPoints();
-            let routDistance = locationToRouteDistance(this.currentLocation, points);
-            if (routDistance > 50) {
-                let latlngs = [[point.lat, point.lng], [points[0][1], points[0][0]]];
-                let polyline = L.polyline(latlngs, { color: 'grey' }).addTo(this.locationLayer);
+            let snapPoint = this.process.currentPoint();
+            if (this.process.isOnRoute()) {
+                point = snapPoint;
             } else {
-                point = this.process.currentPoint();
+                let latlngs = [[this.currentLocation.lat, this.currentLocation.lng], [snapPoint.lat, snapPoint.lng]];
+                let polyline = L.polyline(latlngs, { color: 'grey' }).addTo(this.locationLayer);
             }
             L.marker(point, {
                 icon: navgationIcon,
@@ -166,11 +177,12 @@ export default {
     computed: {
         rotate: {
             get: function() {
-                return this._rotate;
+                return this.p_rotate;
             },
             set: function(value) {
-                L.Draggable._rotate = value;
-                this._rotate = value;
+                // L.Draggable.setRotate(value);
+                this.map.dragging._draggable.setRotate(value);
+                this.p_rotate = value;
             }
         },
         remaining: {
@@ -262,7 +274,15 @@ export default {
             },
             set: function() {
                 if (this.process != null) {
-                    this.p_navigationInfo = this.process.instructionStrings();
+                    let strings = this.process.instructionStrings();
+                    if (strings[1]!=this.p_navigationInfo[1]) {
+                        try {
+                            var msg = new SpeechSynthesisUtterance(strings[0] + ',' + strings[1]);
+                            window.speechSynthesis.speak(msg);
+                        } catch (error) {
+                        }
+                    }
+                    this.p_navigationInfo = strings;
                 }
             }
         }
@@ -272,9 +292,9 @@ export default {
         this.map.stopLocate();
         this.map.off(this.locationEventObject);
         if ('ondeviceorientationabsolute' in window) {
-            window.removeEventListener('ondeviceorientationabsolute', this.deviceorientationEventHandle);
+            L.DomEvent.off(window, 'deviceorientationabsolute', this.deviceorientationEventHandle, this);
         } else if ('ondeviceorientation' in window) {
-            window.removeEventListener('ondeviceorientation', this.deviceorientationEventHandle);
+            L.DomEvent.off(window, 'deviceorientation', this.deviceorientationEventHandle, this);
         }
     }
 };
@@ -314,6 +334,7 @@ export default {
 
 .info-img {
     height: 10vh;
+    max-width: 10vh;
     margin-top: 2.5vh;
     margin-left: 4vw;
 }
